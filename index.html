@@ -221,8 +221,8 @@
         </button>
     </nav>
 
-    <div id="exercise-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex-col justify-end items-center transition-opacity">
-        <div class="bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col max-h-[85vh]">
+    <div id="exercise-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden transition-opacity">
+        <div class="absolute bottom-0 left-0 right-0 mx-auto bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col max-h-[85vh]">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-xl font-bold text-gray-800">專屬動作庫</h3>
                 <button onclick="closeExerciseModal()" class="p-2 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full active:scale-95 transition"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -253,8 +253,8 @@
         </div>
     </div>
 
-    <div id="add-student-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex-col justify-end items-center transition-opacity">
-        <div class="bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col">
+    <div id="add-student-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden transition-opacity">
+        <div class="absolute bottom-0 left-0 right-0 mx-auto bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col">
             <div class="flex justify-between items-center mb-5">
                 <h3 class="text-xl font-bold text-gray-800">新增學員</h3>
                 <button onclick="closeAddStudentModal()" class="p-2 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full active:scale-95 transition"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -271,8 +271,8 @@
         </div>
     </div>
 
-    <div id="edit-student-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex-col justify-end items-center transition-opacity">
-        <div class="bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col">
+    <div id="edit-student-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden transition-opacity">
+        <div class="absolute bottom-0 left-0 right-0 mx-auto bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col">
             <div class="flex justify-between items-center mb-5">
                 <h3 class="text-xl font-bold text-gray-800">編輯學員</h3>
                 <button onclick="closeEditStudentModal()" class="p-2 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full active:scale-95 transition"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -296,8 +296,8 @@
         </div>
     </div>
 
-    <div id="action-sheet" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] hidden flex-col justify-end items-center transition-opacity">
-        <div class="bg-white w-full max-w-lg rounded-t-3xl px-5 pt-5 pb-safe animate-slide-up">
+    <div id="action-sheet" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] hidden transition-opacity">
+        <div class="absolute bottom-0 left-0 right-0 mx-auto bg-white w-full max-w-lg rounded-t-3xl px-5 pt-5 pb-safe animate-slide-up">
             <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-5"></div>
             <button onclick="deleteCurrentExercise()" class="w-full py-4 text-red-500 font-bold text-lg bg-red-50 rounded-2xl mb-3 flex justify-center items-center gap-2 active:bg-red-100 transition"><i data-lucide="trash-2" class="w-5 h-5"></i> 刪除此動作</button>
             <button onclick="addNoteToCurrentExercise()" class="w-full py-4 text-gray-700 font-bold text-lg bg-gray-50 rounded-2xl mb-3 flex justify-center items-center gap-2 active:bg-gray-100 transition"><i data-lucide="file-text" class="w-5 h-5"></i> 新增備註</button>
@@ -331,9 +331,13 @@
         // ⚠️⚠️⚠️ 警告：請將下方的字串換成你部署 Google Apps Script 後取得的網址 ⚠️⚠️⚠️
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwZ9USmPgdsYB9609fgfqB6NUwXCCEOMV5-VQQCMxr2MNZZGUmDtxpj_C6Vv2ZaKGFw/exec'; 
 
-        // ====== 1. 安全存取與同步機制 ======
+        // ====== 1. 安全存取、鎖定滾動與同步機制 ======
         function safeCreateIcons() { try { if(typeof lucide !== 'undefined') lucide.createIcons(); } catch(e) { } }
         
+        // 鎖定背後畫面，防止 iOS Safari 鍵盤跑版
+        function lockScroll() { document.body.style.overflow = 'hidden'; }
+        function unlockScroll() { document.body.style.overflow = ''; }
+
         function saveToDB(key, data) { 
             try { 
                 localStorage.setItem(key, JSON.stringify(data)); 
@@ -625,8 +629,8 @@
             reader.readAsText(file);
         }
 
-        function openClearDataModal() { document.getElementById('confirm-modal').classList.remove('hidden'); document.getElementById('confirm-modal').classList.add('flex'); }
-        function closeClearDataModal() { document.getElementById('confirm-modal').classList.add('hidden'); document.getElementById('confirm-modal').classList.remove('flex'); }
+        function openClearDataModal() { lockScroll(); document.getElementById('confirm-modal').classList.remove('hidden'); document.getElementById('confirm-modal').classList.add('flex'); }
+        function closeClearDataModal() { unlockScroll(); document.getElementById('confirm-modal').classList.add('hidden'); document.getElementById('confirm-modal').classList.remove('flex'); }
         function confirmClearAllData() { 
             localStorage.removeItem('coachStudentsDB'); localStorage.removeItem('coachHistoryDB'); localStorage.removeItem('coachExerciseDB'); 
             showToast("本地資料已清空，重整頁面中...");
@@ -634,8 +638,8 @@
         }
 
         // 動作庫管理全螢幕視窗
-        function openManageExerciseModal() { renderManageExerciseList(); document.getElementById('manage-exercise-modal').classList.remove('hidden'); document.getElementById('manage-exercise-modal').classList.add('flex'); }
-        function closeManageExerciseModal() { document.getElementById('manage-exercise-modal').classList.add('hidden'); document.getElementById('manage-exercise-modal').classList.remove('flex'); }
+        function openManageExerciseModal() { lockScroll(); renderManageExerciseList(); document.getElementById('manage-exercise-modal').classList.remove('hidden'); document.getElementById('manage-exercise-modal').classList.add('flex'); }
+        function closeManageExerciseModal() { unlockScroll(); document.getElementById('manage-exercise-modal').classList.add('hidden'); document.getElementById('manage-exercise-modal').classList.remove('flex'); }
         
         function renderManageExerciseList() {
             const listContainer = document.getElementById('manage-exercise-list'); listContainer.innerHTML = '';
@@ -697,8 +701,8 @@
         function loadWorkoutFromHistory(studentName, dateStr) { document.getElementById('student-selector').value = studentName; datePicker.value = dateStr; updateDateText(dateStr); switchPage('record'); showToast(`已還原 ${studentName} 於 ${dateStr} 的課表`); }
 
         // ====== 學員編輯 (加入刪除按鈕) ======
-        function openAddStudentModal() { document.getElementById('add-student-modal').classList.remove('hidden'); document.getElementById('add-student-modal').classList.add('flex'); }
-        function closeAddStudentModal() { document.getElementById('add-student-modal').classList.add('hidden'); document.getElementById('add-student-modal').classList.remove('flex'); document.getElementById('new-student-name').value = ''; }
+        function openAddStudentModal() { lockScroll(); document.getElementById('add-student-modal').classList.remove('hidden'); document.getElementById('add-student-modal').classList.add('block'); }
+        function closeAddStudentModal() { unlockScroll(); document.getElementById('add-student-modal').classList.add('hidden'); document.getElementById('add-student-modal').classList.remove('block'); document.getElementById('new-student-name').value = ''; }
         function saveNewStudent() {
             try {
                 const name = document.getElementById('new-student-name').value.trim(); 
@@ -709,10 +713,11 @@
             } catch (e) {}
         }
         function openEditStudentModal(index) {
+            lockScroll();
             const student = studentsDB[index]; document.getElementById('edit-student-index').value = index; document.getElementById('edit-student-name').value = student.name; 
-            document.getElementById('edit-student-modal').classList.remove('hidden'); document.getElementById('edit-student-modal').classList.add('flex');
+            document.getElementById('edit-student-modal').classList.remove('hidden'); document.getElementById('edit-student-modal').classList.add('block');
         }
-        function closeEditStudentModal() { document.getElementById('edit-student-modal').classList.add('hidden'); document.getElementById('edit-student-modal').classList.remove('flex'); }
+        function closeEditStudentModal() { unlockScroll(); document.getElementById('edit-student-modal').classList.add('hidden'); document.getElementById('edit-student-modal').classList.remove('block'); }
         function saveEditStudent() {
             try {
                 const index = document.getElementById('edit-student-index').value; const newName = document.getElementById('edit-student-name').value.trim(); 
@@ -823,8 +828,8 @@
         }
         
         let currentTargetCard = null;
-        function openActionOptions(btnElement) { currentTargetCard = btnElement.closest('.exercise-card'); document.getElementById('action-sheet').classList.remove('hidden'); document.getElementById('action-sheet').classList.add('flex'); }
-        function closeActionSheet() { document.getElementById('action-sheet').classList.add('hidden'); document.getElementById('action-sheet').classList.remove('flex'); currentTargetCard = null; }
+        function openActionOptions(btnElement) { lockScroll(); currentTargetCard = btnElement.closest('.exercise-card'); document.getElementById('action-sheet').classList.remove('hidden'); document.getElementById('action-sheet').classList.add('block'); }
+        function closeActionSheet() { unlockScroll(); document.getElementById('action-sheet').classList.add('hidden'); document.getElementById('action-sheet').classList.remove('block'); currentTargetCard = null; }
         function deleteCurrentExercise() {
             if(currentTargetCard) {
                 currentTargetCard.remove();
@@ -873,14 +878,16 @@
         }
 
         function openExerciseModal() { 
+            lockScroll();
             document.getElementById('custom-exercise-input').value = '';
             renderExerciseDB(); 
             document.getElementById('exercise-modal').classList.remove('hidden'); 
-            document.getElementById('exercise-modal').classList.add('flex'); 
+            document.getElementById('exercise-modal').classList.add('block'); 
         }
         function closeExerciseModal() { 
+            unlockScroll();
             document.getElementById('exercise-modal').classList.add('hidden'); 
-            document.getElementById('exercise-modal').classList.remove('flex'); 
+            document.getElementById('exercise-modal').classList.remove('block'); 
             document.getElementById('custom-exercise-input').value = ''; 
         }
 
