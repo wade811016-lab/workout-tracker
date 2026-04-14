@@ -352,13 +352,18 @@
         // ====== 1. 安全存取與同步機制 ======
         function safeCreateIcons() { try { if(typeof lucide !== 'undefined') lucide.createIcons(); } catch(e) { } }
         
+        // 儲存到 LocalStorage 後，如果設定了雲端網址，就觸發雲端同步
         function saveToDB(key, data) { 
             try { 
                 localStorage.setItem(key, JSON.stringify(data)); 
-                if (SCRIPT_URL && !SCRIPT_URL.includes('請貼上你的')) { triggerCloudSync(); }
+                
+                if (SCRIPT_URL && !SCRIPT_URL.includes('請貼上你的')) {
+                    triggerCloudSync();
+                }
                 return true; 
             } catch(e) { 
-                showToast("⚠️ 手機儲存空間不足，儲存失敗"); return false; 
+                showToast("⚠️ 手機儲存空間不足，儲存失敗"); 
+                return false; 
             } 
         }
 
@@ -367,15 +372,27 @@
             return defaultData;
         }
 
-        function showSyncingUI() { const status = document.getElementById('cloud-sync-status'); if(status) status.classList.remove('opacity-0'); }
-        function hideSyncingUI() { const status = document.getElementById('cloud-sync-status'); if(status) status.classList.add('opacity-0'); }
+        // 顯示雲端同步中動畫
+        function showSyncingUI() {
+            const status = document.getElementById('cloud-sync-status');
+            if(status) status.classList.remove('opacity-0');
+        }
+        function hideSyncingUI() {
+            const status = document.getElementById('cloud-sync-status');
+            if(status) status.classList.add('opacity-0');
+        }
 
         let isSyncing = false;
         function triggerCloudSync() {
             if (isSyncing || !navigator.onLine) return; 
-            isSyncing = true; showSyncingUI();
+            isSyncing = true;
+            showSyncingUI();
 
-            const payload = { history: historyDB, students: studentsDB, exercises: customExerciseDB };
+            const payload = {
+                history: historyDB,
+                students: studentsDB,
+                exercises: customExerciseDB
+            };
 
             fetch(SCRIPT_URL + '?action=saveAll', {
                 method: 'POST',
@@ -385,45 +402,68 @@
             .then(response => response.json())
             .then(result => {
                 if (result.status === 'success') {
-                    const now = new Date(); const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                    const now = new Date();
+                    const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
                     document.getElementById('cloud-status-badge').innerText = '已連線 (最新)';
                     document.getElementById('cloud-status-badge').className = 'bg-emerald-100 text-emerald-600 text-[10px] font-bold px-2 py-1 rounded-full';
                     document.getElementById('cloud-last-sync').innerText = `上次同步：今天 ${timeStr}`;
                 }
             })
             .catch(error => {
+                console.error('雲端同步失敗:', error);
                 document.getElementById('cloud-status-badge').innerText = '同步失敗，將於下次重試';
                 document.getElementById('cloud-status-badge').className = 'bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded-full';
             })
-            .finally(() => { isSyncing = false; hideSyncingUI(); });
+            .finally(() => {
+                isSyncing = false;
+                hideSyncingUI();
+            });
         }
 
         function forceSyncWithCloud() {
-            if (!SCRIPT_URL || SCRIPT_URL.includes('請貼上你的')) { showToast("⚠️ 請先在程式碼中貼上 Apps Script 網址"); return; }
-            if (!navigator.onLine) { showToast("⚠️ 請確認網路連線"); return; }
+            if (!SCRIPT_URL || SCRIPT_URL.includes('請貼上你的')) {
+                showToast("⚠️ 請先在程式碼中貼上 Apps Script 網址");
+                return;
+            }
+            if (!navigator.onLine) {
+                showToast("⚠️ 請確認網路連線");
+                return;
+            }
 
-            showToast("🔄 正在從雲端下載最新資料..."); showSyncingUI();
+            showToast("🔄 正在從雲端下載最新資料...");
+            showSyncingUI();
 
             fetch(SCRIPT_URL + '?action=readAll')
             .then(response => response.json())
             .then(result => {
                 if (result.status === 'success' && result.data) {
                     if (result.data.students && result.data.students.length > 0) {
-                        studentsDB = result.data.students; localStorage.setItem('coachStudentsDB', JSON.stringify(studentsDB));
+                        // 🌟 修復大小寫相容性問題
+                        studentsDB = result.data.students.map(s => ({
+                            name: s.Name || s.name || "未命名",
+                            classes: (s.Classes !== undefined) ? s.Classes : (s.classes !== undefined ? s.classes : 0),
+                            color: s.Color || s.color || "bg-gray-100 text-gray-600"
+                        }));
+                        localStorage.setItem('coachStudentsDB', JSON.stringify(studentsDB));
                     }
                     if (result.data.history) {
-                        historyDB = result.data.history; localStorage.setItem('coachHistoryDB', JSON.stringify(historyDB));
+                        historyDB = result.data.history.filter(h => h !== null);
+                        localStorage.setItem('coachHistoryDB', JSON.stringify(historyDB));
                     }
                     if (result.data.exercises) {
-                        customExerciseDB = result.data.exercises; localStorage.setItem('coachExerciseDB', JSON.stringify(customExerciseDB));
+                        customExerciseDB = result.data.exercises; 
+                        localStorage.setItem('coachExerciseDB', JSON.stringify(customExerciseDB));
                     }
                     
-                    renderStudentSelector(); loadRecordPageData();
+                    // 重新渲染畫面
+                    renderStudentSelector();
+                    loadRecordPageData();
                     if(document.getElementById('page-students').classList.contains('block')) renderStudentsPage();
                     if(document.getElementById('page-analysis').classList.contains('block')) renderAnalysisPage();
                     if(document.getElementById('page-settings').classList.contains('block')) renderManageExerciseList();
 
-                    const now = new Date(); const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                    const now = new Date();
+                    const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
                     document.getElementById('cloud-status-badge').innerText = '已連線 (最新)';
                     document.getElementById('cloud-status-badge').className = 'bg-emerald-100 text-emerald-600 text-[10px] font-bold px-2 py-1 rounded-full';
                     document.getElementById('cloud-last-sync').innerText = `上次同步：今天 ${timeStr}`;
@@ -431,14 +471,19 @@
                     showToast("✅ 雲端資料同步完成！");
                 }
             })
-            .catch(error => { showToast("❌ 同步失敗，請檢查網址或網路"); })
-            .finally(() => { hideSyncingUI(); });
+            .catch(error => {
+                console.error('下載雲端資料失敗:', error);
+                showToast("❌ 同步失敗，請檢查網址或網路");
+            })
+            .finally(() => {
+                hideSyncingUI();
+            });
         }
 
 
         // ====== 全局資料庫載入 ======
         let customExerciseDB = loadFromDB('coachExerciseDB', []);
-        let studentsDB = loadFromDB('coachStudentsDB', [ { name: "自己", classes: "∞", color: "bg-gray-100 text-gray-600" }, { name: "王小明", classes: 12, color: "bg-blue-100 text-blue-600" }, { name: "李小華", classes: 2, color: "bg-pink-100 text-pink-600" } ]);
+        let studentsDB = loadFromDB('coachStudentsDB', [ { name: "自己", classes: "∞", color: "bg-gray-100 text-gray-600" }]);
         let historyDB = loadFromDB('coachHistoryDB', []);
 
         // ====== 初始載入 ======
@@ -450,7 +495,10 @@
                 if(document.getElementById('page-analysis').classList.contains('block')) renderAnalysisPage();
             });
 
-            if (SCRIPT_URL && !SCRIPT_URL.includes('請貼上你的') && navigator.onLine) { forceSyncWithCloud(); }
+            // 如果有設定雲端網址，打開網頁時自動偷偷背景下載一次
+            if (SCRIPT_URL && !SCRIPT_URL.includes('請貼上你的') && navigator.onLine) {
+                forceSyncWithCloud();
+            }
         });
 
         function showToast(msg) {
@@ -511,6 +559,7 @@
             
             if(pageId === 'students') renderStudentsPage(); 
             if(pageId === 'analysis') renderAnalysisPage(); 
+            if(pageId === 'settings') renderManageExerciseList();
         }
 
         // ====== 📊 數據分析 (精簡圖表版) ======
@@ -624,8 +673,19 @@
                 try {
                     const importedData = JSON.parse(e.target.result);
                     if(importedData.studentsDB && importedData.historyDB) {
-                        studentsDB = importedData.studentsDB; historyDB = importedData.historyDB; customExerciseDB = importedData.customExerciseDB || [];
-                        saveToDB('coachStudentsDB', studentsDB); saveToDB('coachHistoryDB', historyDB); saveToDB('coachExerciseDB', customExerciseDB);
+                        // 🌟 修復大小寫相容性
+                        studentsDB = importedData.studentsDB.map(s => ({
+                            name: s.Name || s.name || "未命名",
+                            classes: (s.Classes !== undefined) ? s.Classes : (s.classes !== undefined ? s.classes : 0),
+                            color: s.Color || s.color || "bg-gray-100 text-gray-600"
+                        }));
+                        historyDB = importedData.historyDB.filter(h => h !== null); 
+                        customExerciseDB = importedData.customExerciseDB || [];
+                        
+                        saveToDB('coachStudentsDB', studentsDB); 
+                        saveToDB('coachHistoryDB', historyDB); 
+                        saveToDB('coachExerciseDB', customExerciseDB);
+                        
                         renderStudentSelector(); loadRecordPageData(); showToast("✅ 資料已成功還原！");
                         if (SCRIPT_URL && !SCRIPT_URL.includes('請貼上你的')) triggerCloudSync();
                     } else { showToast("❌ 檔案格式錯誤"); }
@@ -738,7 +798,6 @@
             } catch (e) {}
         }
 
-        // 刪除學員與歷史紀錄
         function deleteStudent() {
             try {
                 const index = document.getElementById('edit-student-index').value;
