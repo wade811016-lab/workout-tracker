@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>訓練紀錄 Web App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; margin: 0; 
+        }
+        * { -webkit-tap-highlight-color: transparent; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        
+        input:focus, textarea:focus {
+            outline: none; box-shadow: inset 0 0 0 2px #3b82f6; background-color: #ffffff;
+        }
+        .secs-input:focus { box-shadow: inset 0 0 0 2px #f97316; }
+        .note-input:focus { box-shadow: inset 0 0 0 2px #eab308; }
+        
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .animate-slide-up { animation: slideUp 0.3s ease-out forwards; }
+        @keyframes fadeInScale { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .animate-card { animation: fadeInScale 0.3s ease-out forwards; }
+        @keyframes expandDown { from { opacity: 0; transform: translateY(-10px); max-height: 0; } to { opacity: 1; transform: translateY(0); max-height: 400px; } }
+        .animate-expand { animation: expandDown 0.3s ease-out forwards; }
+        
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
+
+        /* 雲端同步中的旋轉動畫 */
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .sync-spin { animation: spin 1s linear infinite; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans pb-32 antialiased">
+
+    <header class="bg-white shadow-sm px-4 py-3 flex justify-between items-center sticky top-0 z-10 w-full">
+        <h1 class="text-xl font-extrabold text-blue-600 tracking-wide flex items-center gap-1">
+            <i data-lucide="dumbbell" class="w-6 h-6"></i> 訓練紀錄
+        </h1>
+        
+        <div id="cloud-sync-status" class="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center opacity-0 transition-opacity">
+            <span class="bg-blue-50 text-blue-500 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-sm border border-blue-100">
+                <i data-lucide="refresh-cw" class="w-3 h-3 sync-spin"></i> 同步中...
+            </span>
+        </div>
+
+        <div class="relative max-w-[40%]">
+            <select id="student-selector" class="appearance-none bg-gray-100 border border-gray-200 text-sm font-bold rounded-full pl-4 pr-8 py-1.5 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 truncate transition-colors">
+                </select>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none"></i>
+        </div>
+    </header>
+
+    <div id="page-record" class="page-content block relative min-h-screen">
+        <div class="px-4 py-4 flex justify-between items-center w-full max-w-lg mx-auto">
+            <div class="relative flex items-center space-x-2 p-1 -ml-1 rounded-xl active:bg-gray-200 transition cursor-pointer">
+                <input type="date" id="date-picker" class="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer">
+                <div class="bg-blue-100 p-1.5 rounded-lg text-blue-600">
+                    <i data-lucide="calendar" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <p class="text-[10px] text-gray-500 font-medium" id="date-label">今日訓練</p>
+                    <div class="flex items-center gap-1">
+                        <h2 class="font-bold text-gray-800 text-sm" id="current-date-text"></h2>
+                        <i data-lucide="chevron-down" class="w-3 h-3 text-gray-400"></i>
+                    </div>
+                </div>
+            </div>
+            <button onclick="copyToAI()" class="flex items-center gap-1 bg-gray-800 text-white px-3 py-2 rounded-lg text-sm font-medium shadow-sm active:scale-95 transition">
+                <i data-lucide="copy" class="w-4 h-4"></i> 複製給 AI
+            </button>
+        </div>
+
+        <div class="w-full max-w-lg mx-auto" id="workout-container">
+            </div> 
+
+        <div class="px-3 sm:px-4 mt-2 w-full max-w-lg mx-auto space-y-3">
+            <button onclick="openExerciseModal()" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-md">
+                <i data-lucide="plus-circle" class="w-5 h-5"></i> 從動作庫新增動作
+            </button>
+            <div id="deduct-class-container" class="hidden flex items-center justify-between bg-white px-5 py-3.5 rounded-2xl shadow-sm border border-gray-200">
+                <div class="flex flex-col">
+                    <span class="text-sm font-bold text-gray-800">本次訓練扣除一堂課</span>
+                    <span id="deduct-class-hint" class="text-[10px] text-gray-500 font-medium">剩餘堂數將自動更新</span>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="deduct-checkbox" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+            <button onclick="saveWorkout()" class="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-md relative overflow-hidden group">
+                <div class="absolute inset-0 w-full h-full bg-white/20 transform -skew-x-12 -translate-x-full group-active:animate-[shimmer_0.5s_forwards]"></div>
+                <i data-lucide="check-circle" class="w-5 h-5"></i> 完成訓練並儲存
+            </button>
+        </div>
+    </div> 
+
+    <div id="page-students" class="page-content hidden relative min-h-screen">
+        <div class="px-4 py-4 w-full max-w-lg mx-auto flex justify-between items-center">
+            <h2 class="text-xl font-bold text-gray-800">學員列表</h2>
+            <button onclick="openAddStudentModal()" class="text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg text-sm font-bold active:bg-blue-100 transition flex items-center gap-1">
+                <i data-lucide="user-plus" class="w-4 h-4"></i> 新增學員
+            </button>
+        </div>
+        <div id="students-container" class="w-full max-w-lg mx-auto px-3 sm:px-4 space-y-4">
+            </div>
+    </div>
+
+    <div id="page-analysis" class="page-content hidden relative min-h-screen">
+        <div class="px-4 py-4 w-full max-w-lg mx-auto">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">學員力量成長</h2>
+            
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 mt-2">
+                <div class="flex items-center gap-2 mb-4">
+                    <i data-lucide="trending-up" class="w-5 h-5 text-amber-500"></i>
+                    <h3 class="font-bold text-lg text-gray-800">PR 成長趨勢</h3>
+                </div>
+                
+                <div class="relative mb-3">
+                    <select id="analysis-exercise-selector" onchange="updateAnalysisChart()" class="appearance-none bg-gray-50 border border-gray-200 text-sm font-bold rounded-xl pl-4 pr-8 py-2.5 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700">
+                        <option>載入中...</option>
+                    </select>
+                    <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none"></i>
+                </div>
+
+                <div class="flex gap-2 mb-4">
+                    <button onclick="setChartRange('1m')" id="btn-range-1m" class="flex-1 py-1.5 text-[11px] font-bold rounded-lg bg-gray-100 text-gray-500 transition">1個月</button>
+                    <button onclick="setChartRange('3m')" id="btn-range-3m" class="flex-1 py-1.5 text-[11px] font-bold rounded-lg bg-gray-100 text-gray-500 transition">3個月</button>
+                    <button onclick="setChartRange('all')" id="btn-range-all" class="flex-1 py-1.5 text-[11px] font-bold rounded-lg bg-blue-500 text-white shadow-sm transition">全部</button>
+                </div>
+
+                <div class="w-full h-64 relative">
+                    <canvas id="prChart"></canvas>
+                </div>
+                <p class="text-center text-[10px] text-gray-400 mt-3">圖表顯示所選時間範圍內，該動作每次訓練的最大成績</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="page-settings" class="page-content hidden relative min-h-screen">
+        <div class="px-4 py-4 w-full max-w-lg mx-auto">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">系統設定</h2>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-5">
+                <div class="px-4 py-3 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="cloud" class="w-5 h-5 text-sky-500"></i>
+                        <h3 class="font-bold text-gray-800">雲端資料庫狀態</h3>
+                    </div>
+                    <span id="cloud-status-badge" class="bg-gray-100 text-gray-500 text-[10px] font-bold px-2 py-1 rounded-full">未連線</span>
+                </div>
+                <div class="p-4">
+                    <p class="text-xs text-gray-500 mb-3 leading-relaxed">您的資料將自動備份至 Google Sheet，跨裝置不遺失。</p>
+                    <button onclick="forceSyncWithCloud()" class="w-full py-3 bg-sky-50 text-sky-600 font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-sky-100 transition active:scale-95 border border-sky-200 shadow-sm">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> 強制與雲端同步
+                    </button>
+                    <p id="cloud-last-sync" class="text-[10px] text-gray-400 text-center mt-2">上次同步：--</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-5">
+                <div class="px-4 py-3 bg-gray-50/50 border-b border-gray-100 flex items-center gap-2">
+                    <i data-lucide="save" class="w-5 h-5 text-blue-500"></i>
+                    <h3 class="font-bold text-gray-800">手動備份與還原</h3>
+                </div>
+                <div class="p-4 space-y-3">
+                    <p class="text-xs text-gray-500 leading-relaxed mb-1">將資料下載為檔案妥善保存。</p>
+                    <button onclick="exportData()" class="w-full py-3 bg-blue-50 text-blue-600 font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-blue-100 transition active:scale-95">
+                        <i data-lucide="download" class="w-4 h-4"></i> 匯出備份檔 (.json)
+                    </button>
+                    <div class="relative">
+                        <input type="file" id="import-file" accept=".json" class="hidden" onchange="importData(event)">
+                        <button onclick="document.getElementById('import-file').click()" class="w-full py-3 bg-white border border-gray-300 text-gray-700 font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-gray-50 transition active:scale-95">
+                            <i data-lucide="upload" class="w-4 h-4"></i> 匯入備份檔
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-5">
+                <div class="px-4 py-3 bg-gray-50/50 border-b border-gray-100 flex items-center gap-2">
+                    <i data-lucide="list-checks" class="w-5 h-5 text-purple-500"></i>
+                    <h3 class="font-bold text-gray-800">動作庫管理</h3>
+                </div>
+                <div class="p-4">
+                    <p class="text-xs text-gray-500 mb-3">整理或刪除您專屬的動作，並調整顯示順序。</p>
+                    <button onclick="openManageExerciseModal()" class="w-full py-3 bg-white border border-gray-300 text-gray-700 font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-gray-50 transition active:scale-95">
+                        <i data-lucide="settings-2" class="w-4 h-4"></i> 進入動作庫管理
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-red-200 overflow-hidden mb-5">
+                <div class="px-4 py-3 bg-red-50/50 border-b border-red-100 flex items-center gap-2">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-red-500"></i>
+                    <h3 class="font-bold text-red-600">危險區域</h3>
+                </div>
+                <div class="p-4">
+                    <button onclick="openClearDataModal()" class="w-full py-3 bg-red-500 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-red-600 transition active:scale-95">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i> 清空所有系統資料
+                    </button>
+                </div>
+            </div>
+            <div class="h-24 w-full"></div>
+        </div>
+    </div>
+
+    <nav class="fixed bottom-0 w-full bg-white border-t border-gray-200 pb-safe pt-1 flex justify-around items-center text-gray-400 z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <button onclick="switchPage('record')" id="nav-record" class="nav-btn flex flex-col items-center gap-1 text-blue-600 p-3 w-full">
+            <i data-lucide="clipboard-list" class="w-6 h-6"></i>
+            <span class="font-bold text-[10px]">紀錄</span>
+        </button>
+        <button onclick="switchPage('students')" id="nav-students" class="nav-btn flex flex-col items-center gap-1 p-3 hover:text-gray-600 transition w-full">
+            <i data-lucide="users" class="w-6 h-6"></i>
+            <span class="font-medium text-[10px]">學員</span>
+        </button>
+        <button onclick="switchPage('analysis')" id="nav-analysis" class="nav-btn flex flex-col items-center gap-1 p-3 hover:text-gray-600 transition w-full">
+            <i data-lucide="line-chart" class="w-6 h-6"></i>
+            <span class="font-medium text-[10px]">分析</span>
+        </button>
+        <button onclick="switchPage('settings')" id="nav-settings" class="nav-btn flex flex-col items-center gap-1 p-3 hover:text-gray-600 transition w-full">
+            <i data-lucide="settings" class="w-6 h-6"></i>
+            <span class="font-medium text-[10px]">設定</span>
+        </button>
+    </nav>
+
+    <div id="exercise-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex-col justify-end items-center transition-opacity">
+        <div class="bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">專屬動作庫</h3>
+                <button onclick="closeExerciseModal()" class="p-2 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full active:scale-95 transition"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="flex gap-2 mb-4 shrink-0">
+                <div class="relative flex-1">
+                    <i data-lucide="search" class="w-5 h-5 text-gray-400 absolute left-4 top-1/2 transform -translate-y-1/2"></i>
+                    <input type="text" id="custom-exercise-input" placeholder="輸入自己習慣的動作名稱..." class="w-full bg-gray-100 text-gray-700 rounded-xl pl-11 pr-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button onclick="addCustomExercise()" class="bg-gray-800 text-white px-4 rounded-xl font-bold active:scale-95 transition whitespace-nowrap">新增</button>
+            </div>
+            <div id="db-exercise-list" class="overflow-y-auto space-y-2 pr-1 pb-4 flex-1"></div>
+        </div>
+    </div>
+
+    <div id="manage-exercise-modal" class="fixed inset-0 bg-gray-50 z-50 hidden flex-col transition-opacity overflow-hidden">
+        <div class="bg-white shadow-sm px-4 py-3 flex justify-between items-center w-full sticky top-0 z-10">
+            <div class="flex items-center gap-2">
+                <button onclick="closeManageExerciseModal()" class="p-2 text-gray-400 hover:text-gray-700 active:bg-gray-100 rounded-full transition">
+                    <i data-lucide="arrow-left" class="w-6 h-6"></i>
+                </button>
+                <h2 class="text-lg font-bold text-gray-800">管理專屬動作庫</h2>
+            </div>
+        </div>
+        <div class="p-4 overflow-y-auto pb-safe flex-1 w-full max-w-lg mx-auto">
+            <p class="text-xs text-gray-500 mb-4 px-1">點擊上下箭頭調整顯示順序，或點擊垃圾桶刪除動作。</p>
+            <div id="manage-exercise-list" class="space-y-3"></div>
+        </div>
+    </div>
+
+    <div id="add-student-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex-col justify-end items-center transition-opacity">
+        <div class="bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-xl font-bold text-gray-800">新增學員</h3>
+                <button onclick="closeAddStudentModal()" class="p-2 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full active:scale-95 transition"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 ml-1">學員姓名</label>
+                    <input type="text" id="new-student-name" placeholder="例如：陳大文" class="w-full bg-gray-100 text-gray-700 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 ml-1">初始購買堂數</label>
+                    <input type="number" id="new-student-classes" placeholder="例如：10" class="w-full bg-gray-100 text-gray-700 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            <button onclick="saveNewStudent()" class="w-full py-4 bg-blue-600 text-white font-bold rounded-xl text-base flex items-center justify-center gap-2 active:scale-95 transition">
+                儲存學員
+            </button>
+        </div>
+    </div>
+
+    <div id="edit-student-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex-col justify-end items-center transition-opacity">
+        <div class="bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-xl font-bold text-gray-800">編輯學員 / 儲值堂數</h3>
+                <button onclick="closeEditStudentModal()" class="p-2 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full active:scale-95 transition"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="space-y-4 mb-6">
+                <input type="hidden" id="edit-student-index">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 ml-1">修改姓名</label>
+                    <input type="text" id="edit-student-name" class="w-full bg-gray-100 text-gray-700 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1 ml-1">儲值/新增堂數 (若要扣除請輸入負數)</label>
+                    <input type="number" id="edit-student-add-classes" placeholder="輸入新增堂數，例如：10" class="w-full bg-gray-100 text-gray-700 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            <button onclick="saveEditStudent()" class="w-full py-4 bg-blue-600 text-white font-bold rounded-xl text-base flex items-center justify-center gap-2 active:scale-95 transition">
+                儲存變更
+            </button>
+        </div>
+    </div>
+
+    <div id="action-sheet" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] hidden flex-col justify-end items-center transition-opacity">
+        <div class="bg-white w-full max-w-lg rounded-t-3xl px-5 pt-5 pb-safe animate-slide-up">
+            <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-5"></div>
+            <button onclick="deleteCurrentExercise()" class="w-full py-4 text-red-500 font-bold text-lg bg-red-50 rounded-2xl mb-3 flex justify-center items-center gap-2 active:bg-red-100 transition"><i data-lucide="trash-2" class="w-5 h-5"></i> 刪除此動作</button>
+            <button onclick="addNoteToCurrentExercise()" class="w-full py-4 text-gray-700 font-bold text-lg bg-gray-50 rounded-2xl mb-3 flex justify-center items-center gap-2 active:bg-gray-100 transition"><i data-lucide="file-text" class="w-5 h-5"></i> 新增備註</button>
+            <button onclick="closeActionSheet()" class="w-full py-4 text-gray-500 font-bold text-lg mb-2 active:bg-gray-100 rounded-2xl transition">取消</button>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] hidden flex-col justify-center items-center transition-opacity px-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 flex flex-col items-center text-center animate-card">
+            <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">
+                <i data-lucide="alert-triangle" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-800 mb-2">確定要清空所有資料？</h3>
+            <p class="text-sm text-gray-500 mb-6">此操作將會刪除所有的學員資料、歷史紀錄與動作庫，且<span class="text-red-500 font-bold">無法復原</span>。建議先匯出備份。</p>
+            <div class="w-full flex gap-3">
+                <button onclick="closeClearDataModal()" class="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition">取消</button>
+                <button onclick="confirmClearAllData()" class="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl active:bg-red-600 transition shadow-sm">確認清空</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed top-24 left-1/2 transform -translate-x-1/2 bg-gray-800/95 text-white px-6 py-3 rounded-full text-sm font-bold shadow-xl transition-opacity duration-300 opacity-0 pointer-events-none z-[80] w-max max-w-[90vw] text-center backdrop-blur-sm">
+        操作成功
+    </div>
+
+    <script>
+        // =========================================================
+        // 🌟 雲端同步大腦 (Cloud Sync Engine)
+        // =========================================================
+        
+        // ⚠️⚠️⚠️ 警告：請將下方的字串換成你部署 Google Apps Script 後取得的網址 ⚠️⚠️⚠️
+        const SCRIPT_URL = '請貼上你的_APPS_SCRIPT_網址'; 
+
+        // ====== 1. 安全存取與同步機制 ======
+        function safeCreateIcons() { try { if(typeof lucide !== 'undefined') lucide.createIcons(); } catch(e) { } }
+        
+        // 儲存到 LocalStorage 後，如果設定了雲端網址，就觸發雲端同步
+        function saveToDB(key, data) { 
+            try { 
+                localStorage.setItem(key, JSON.stringify(data)); 
+                if (SCRIPT_URL && !SCRIPT_URL.includes('請貼上你的')) { triggerCloudSync(); }
+                return true; 
+            } catch(e) { 
+                showToast("⚠️ 手機儲存空間不足，儲存失敗"); return false; 
+            } 
+        }
+
+        function loadFromDB(key, defaultData) {
+            try { const val = localStorage.getItem(key); if (val) { const parsed = JSON.parse(val); if (Array.isArray(defaultData) && !Array.isArray(parsed)) return defaultData; return parsed; } } catch(e) {}
+            return defaultData;
+        }
+
+        function showSyncingUI() { const status = document.getElementById('cloud-sync-status'); if(status) status.classList.remove('opacity-0'); }
+        function hideSyncingUI() { const status = document.getElementById('cloud-sync-status'); if(status) status.classList.add('opacity-0'); }
+
+        let isSyncing = false;
+        function triggerCloudSync() {
+            if (isSyncing || !navigator.onLine) return; 
+            isSyncing = true; showSyncingUI();
+
+            const payload = { history: historyDB, students: studentsDB, exercises: customExerciseDB };
+
+            fetch(SCRIPT_URL + '?action=saveAll', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    const now = new Date(); const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                    document.getElementById('cloud-status-badge').innerText = '已連線 (最新)';
+                    document.getElementById('cloud-status-badge').className = 'bg-emerald-100 text-emerald-600 text-[10px] font-bold px-2 py-1 rounded-full';
+                    document.getElementById('cloud-last-sync').innerText = `上次同步：今天 ${timeStr}`;
+                }
+            })
+            .catch(error => {
+                console.error('雲端同步失敗:', error);
+                document.getElementById('cloud-status-badge').innerText = '同步失敗，將於下次重試';
+                document.getElementById('cloud-status-badge').className = 'bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded-full';
+            })
+            .finally(() => { isSyncing = false; hideSyncingUI(); });
+        }
+
+        function forceSyncWithCloud() {
+            if (!SCRIPT_URL || SCRIPT_URL.includes('請貼上你的')) { showToast("⚠️ 請先在程式碼中貼上 Apps Script 網址"); return; }
+            if (!navigator.onLine) { showToast("⚠️ 請確認網路連線"); return; }
+
+            showToast("🔄 正在從雲端下載最新資料..."); showSyncingUI();
+
+            fetch(SCRIPT_URL + '?action=readAll')
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success' && result.data) {
+                    if (result.data.students && result.data.students.length > 0) {
+                        studentsDB = result.data.students; localStorage.setItem('coachStudentsDB', JSON.stringify(studentsDB));
+                    }
+                    if (result.data.history) {
+                        historyDB = result.data.history; localStorage.setItem('coachHistoryDB', JSON.stringify(historyDB));
+                    }
+                    if (result.data.exercises) {
+                        customExerciseDB = result.data.exercises; localStorage.setItem('coachExerciseDB', JSON.stringify(customExerciseDB));
+                    }
+                    
+                    renderStudentSelector(); loadRecordPageData();
+                    if(document.getElementById('page-students').classList.contains('block')) renderStudentsPage();
+                    if(document.getElementById('page-analysis').classList.contains('block')) renderAnalysisPage();
+                    if(document.getElementById('page-settings').classList.contains('block')) renderManageExerciseList();
+
+                    const now = new Date(); const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                    document.getElementById('cloud-status-badge').innerText = '已連線 (最新)';
+                    document.getElementById('cloud-status-badge').className = 'bg-emerald-100 text-emerald-600 text-[10px] font-bold px-2 py-1 rounded-full';
+                    document.getElementById('cloud-last-sync').innerText = `上次同步：今天 ${timeStr}`;
+                    
+                    showToast("✅ 雲端資料同步完成！");
+                }
+            })
+            .catch(error => { showToast("❌ 同步失敗，請檢查網址或網路"); })
+            .finally(() => { hideSyncingUI(); });
+        }
+
+        // ====== 全局資料庫載入 ======
+        let customExerciseDB = loadFromDB('coachExerciseDB', []);
+        let studentsDB = loadFromDB('coachStudentsDB', [ { name: "自己", classes: "∞", color: "bg-gray-100 text-gray-600" }, { name: "王小明", classes: 12, color: "bg-blue-100 text-blue-600" }, { name: "李小華", classes: 2, color: "bg-pink-100 text-pink-600" } ]);
+        let historyDB = loadFromDB('coachHistoryDB', []);
+
+        // ====== 初始載入 ======
+        document.addEventListener('DOMContentLoaded', () => {
+            safeCreateIcons(); renderStudentSelector(); initDate(); renderStudentsPage();
+            
+            document.getElementById('student-selector').addEventListener('change', () => {
+                loadRecordPageData(); updateDeductUI(); 
+                if(document.getElementById('page-analysis').classList.contains('block')) renderAnalysisPage();
+            });
+
+            if (SCRIPT_URL && !SCRIPT_URL.includes('請貼上你的') && navigator.onLine) { forceSyncWithCloud(); }
+        });
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast'); toast.innerText = msg; toast.classList.remove('opacity-0');
+            setTimeout(() => { toast.classList.add('opacity-0'); }, 2500);
+        }
+
+        // ====== 日期邏輯 ======
+        const datePicker = document.getElementById('date-picker');
+        const dateText = document.getElementById('current-date-text');
+        const dateLabel = document.getElementById('date-label');
+        let localISOTime;
+
+        function initDate() {
+            const today = new Date(); const offset = today.getTimezoneOffset() * 60000;
+            localISOTime = (new Date(today - offset)).toISOString().split('T')[0];
+            datePicker.value = localISOTime; updateDateText(localISOTime);
+        }
+
+        function updateDateText(dateStr) {
+            if(!dateStr) return; const parts = dateStr.split('-');
+            dateText.innerText = `${parts[0]}年${parseInt(parts[1], 10)}月${parseInt(parts[2], 10)}日`;
+            dateLabel.innerText = (dateStr === localISOTime) ? "今日訓練" : "指定日期";
+            loadRecordPageData(); updateDeductUI(); 
+        }
+        datePicker.addEventListener('change', (e) => updateDateText(e.target.value));
+
+        function updateDeductUI() {
+            const studentName = document.getElementById('student-selector').value;
+            const deductContainer = document.getElementById('deduct-class-container');
+            if(studentName === '自己') { deductContainer.classList.add('hidden'); } 
+            else { deductContainer.classList.remove('hidden'); document.getElementById('deduct-checkbox').checked = true; const s = studentsDB.find(st => st.name === studentName); if(s) document.getElementById('deduct-class-hint').innerText = `目前剩餘 ${s.classes} 堂`; }
+        }
+
+        function loadRecordPageData() {
+            try {
+                const studentName = document.getElementById('student-selector').value;
+                const dateStr = datePicker.value;
+                const container = document.getElementById('workout-container');
+                const record = Array.isArray(historyDB) ? historyDB.find(h => h && h.student === studentName && h.date === dateStr) : null;
+                
+                container.innerHTML = ''; 
+                if(!record || !Array.isArray(record.exercises) || record.exercises.length === 0) {
+                    container.innerHTML = `<div id="empty-state" class="flex flex-col items-center justify-center py-16 px-4 text-center"><div class="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4"><i data-lucide="dumbbell" class="w-10 h-10 text-gray-400 opacity-50"></i></div><h3 class="text-lg font-bold text-gray-700 mb-1">新的訓練紀錄</h3><p class="text-sm text-gray-500">點擊下方按鈕，開始加入動作</p></div>`;
+                } else {
+                    record.exercises.forEach(ex => { if(ex && ex.name) createExerciseCard(ex.name, ex); });
+                }
+                safeCreateIcons();
+            } catch (e) {}
+        }
+
+        // ====== 頁面切換 ======
+        function switchPage(pageId) {
+            document.querySelectorAll('.page-content').forEach(page => { page.classList.add('hidden'); page.classList.remove('block'); });
+            document.getElementById(`page-${pageId}`).classList.remove('hidden'); document.getElementById(`page-${pageId}`).classList.add('block');
+            document.querySelectorAll('.nav-btn').forEach(btn => { btn.classList.remove('text-blue-600'); btn.classList.add('text-gray-400'); btn.querySelector('span').classList.remove('font-bold'); btn.querySelector('span').classList.add('font-medium'); });
+            const activeBtn = document.getElementById(`nav-${pageId}`); activeBtn.classList.remove('text-gray-400'); activeBtn.classList.add('text-blue-600'); activeBtn.querySelector('span').classList.remove('font-medium'); activeBtn.querySelector('span').classList.add('font-bold');
+            
+            if(pageId === 'students') renderStudentsPage(); 
+            if(pageId === 'analysis') renderAnalysisPage(); 
+        }
+
+        // ====== 📊 數據分析 (精簡圖表版) ======
+        let prChartInstance = null; let currentChartRange = 'all'; 
+
+        function setChartRange(range) {
+            currentChartRange = range;
+            ['1m', '3m', 'all'].forEach(r => {
+                const btn = document.getElementById(`btn-range-${r}`);
+                if(r === range) { btn.classList.add('bg-blue-500', 'text-white', 'shadow-sm'); btn.classList.remove('bg-gray-100', 'text-gray-500'); } 
+                else { btn.classList.add('bg-gray-100', 'text-gray-500'); btn.classList.remove('bg-blue-500', 'text-white', 'shadow-sm'); }
+            });
+            updateAnalysisChart();
+        }
+
+        function renderAnalysisPage() {
+            try {
+                const studentName = document.getElementById('student-selector').value;
+                if(!Array.isArray(historyDB)) return;
+                const studentHistories = historyDB.filter(h => h && h.student === studentName);
+                
+                let trainedExercises = new Set(); 
+                studentHistories.forEach(record => { if(Array.isArray(record.exercises)){ record.exercises.forEach(ex => { if(ex && ex.name) trainedExercises.add(ex.name); }); } });
+
+                const selector = document.getElementById('analysis-exercise-selector'); selector.innerHTML = '';
+                if(trainedExercises.size === 0) { selector.innerHTML = '<option>尚無訓練數據</option>'; selector.disabled = true; updateAnalysisChart(); return; }
+                selector.disabled = false; Array.from(trainedExercises).forEach(ex => { selector.add(new Option(ex, ex)); }); updateAnalysisChart();
+            } catch(e) {}
+        }
+
+        function updateAnalysisChart() {
+            try {
+                if(typeof Chart === 'undefined') return;
+                const studentName = document.getElementById('student-selector').value; const exerciseName = document.getElementById('analysis-exercise-selector').value;
+                if(!Array.isArray(historyDB)) return;
+                let studentHistories = historyDB.filter(h => h && h.student === studentName).sort((a,b) => new Date(a.date) - new Date(b.date));
+
+                if(currentChartRange !== 'all') {
+                    const limitDate = new Date(); if(currentChartRange === '1m') limitDate.setMonth(limitDate.getMonth() - 1); if(currentChartRange === '3m') limitDate.setMonth(limitDate.getMonth() - 3);
+                    studentHistories = studentHistories.filter(h => h && new Date(h.date) >= limitDate);
+                }
+
+                // 智慧判斷圖表畫法
+                let hasWeight = false, hasReps = false, hasSecs = false;
+                studentHistories.forEach(record => {
+                    if(Array.isArray(record.exercises)){
+                        record.exercises.forEach(ex => {
+                            if(ex && ex.name === exerciseName && Array.isArray(ex.sets)) {
+                                ex.sets.forEach(s => {
+                                    if(s){
+                                        if(parseFloat(s.weight) > 0) hasWeight = true;
+                                        else if(parseInt(s.reps) > 0) hasReps = true;
+                                        else if(parseInt(s.secs) > 0) hasSecs = true;
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+
+                let metricType = 'weight'; let labelText = '最大重量 (kg)';
+                if(hasWeight) { metricType = 'weight'; labelText = '最大重量 (kg)'; }
+                else if(hasReps) { metricType = 'reps'; labelText = '最高次數 (下)'; }
+                else if(hasSecs) { metricType = 'secs'; labelText = '最長秒數 (秒)'; }
+
+                let labels = []; let data = [];
+                studentHistories.forEach(record => {
+                    let maxVal = 0; let found = false;
+                    if(Array.isArray(record.exercises)){ record.exercises.forEach(ex => { 
+                        if(ex && ex.name === exerciseName && Array.isArray(ex.sets)) { 
+                            found = true; 
+                            ex.sets.forEach(s => { 
+                                if(s){ 
+                                    let v = 0;
+                                    if(metricType === 'weight') v = parseFloat(s.weight) || 0;
+                                    else if(metricType === 'reps') v = parseInt(s.reps) || 0;
+                                    else if(metricType === 'secs') v = parseInt(s.secs) || 0;
+                                    if(v > maxVal) maxVal = v; 
+                                } 
+                            }); 
+                        } 
+                    }); }
+                    if(found) { labels.push(record.date.substring(5).replace('-','/')); data.push(maxVal); }
+                });
+
+                const ctx = document.getElementById('prChart').getContext('2d');
+                if(prChartInstance) prChartInstance.destroy();
+                prChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: labelText, data: data, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 3, tension: 0.3, fill: true, pointBackgroundColor: '#3b82f6', pointRadius: 4, pointHoverRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' } }, x: { grid: { display: false }, ticks: { maxTicksLimit: 5, maxRotation: 0, autoSkip: true } } }, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1e293b', padding: 10, cornerRadius: 8, callbacks: { label: function(context) { return labelText + ': ' + context.parsed.y; } } } } } });
+            } catch (e) {}
+        }
+
+        // ====== ⚙️ 設定系統控制中心 ======
+        function exportData() {
+            try {
+                const backupData = { studentsDB: studentsDB, historyDB: historyDB, customExerciseDB: customExerciseDB, exportDate: new Date().toISOString() };
+                const dataStr = JSON.stringify(backupData, null, 2); const blob = new Blob([dataStr], { type: "application/json" }); const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; 
+                
+                // 命名規則優化： 訓練紀錄_YYYYMMDD.json
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                const todayStr = `${yyyy}${mm}${dd}`;
+                
+                a.download = `訓練紀錄_${todayStr}.json`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showToast("✅ 備份檔匯出成功！");
+            } catch(e) { showToast("匯出失敗: " + e.message); }
+        }
+
+        function importData(event) {
+            const file = event.target.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if(importedData.studentsDB && importedData.historyDB) {
+                        studentsDB = importedData.studentsDB; historyDB = importedData.historyDB; customExerciseDB = importedData.customExerciseDB || [];
+                        saveToDB('coachStudentsDB', studentsDB); saveToDB('coachHistoryDB', historyDB); saveToDB('coachExerciseDB', customExerciseDB);
+                        renderStudentSelector(); loadRecordPageData(); showToast("✅ 資料已成功還原！");
+                        // 還原後強制同步到雲端
+                        if (SCRIPT_URL && !SCRIPT_URL.includes('請貼上你的')) triggerCloudSync();
+                    } else { showToast("❌ 檔案格式錯誤"); }
+                } catch(err) { showToast("❌ 解析檔案失敗"); }
+                event.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        function openClearDataModal() { document.getElementById('confirm-modal').classList.remove('hidden'); document.getElementById('confirm-modal').classList.add('flex'); }
+        function closeClearDataModal() { document.getElementById('confirm-modal').classList.add('hidden'); document.getElementById('confirm-modal').classList.remove('flex'); }
+        function confirmClearAllData() { 
+            localStorage.removeItem('coachStudentsDB'); localStorage.removeItem('coachHistoryDB'); localStorage.removeItem('coachExerciseDB'); 
+            showToast("本地資料已清空，重整頁面中...");
+            setTimeout(() => { window.location.reload(); }, 1500);
+        }
+
+        // 動作庫管理全螢幕視窗
+        function openManageExerciseModal() { renderManageExerciseList(); document.getElementById('manage-exercise-modal').classList.remove('hidden'); document.getElementById('manage-exercise-modal').classList.add('flex'); }
+        function closeManageExerciseModal() { document.getElementById('manage-exercise-modal').classList.add('hidden'); document.getElementById('manage-exercise-modal').classList.remove('flex'); }
+        
+        function renderManageExerciseList() {
+            const listContainer = document.getElementById('manage-exercise-list'); listContainer.innerHTML = '';
+            if (customExerciseDB.length === 0) { listContainer.innerHTML = `<p class="text-sm text-gray-400 text-center py-10">動作庫目前為空</p>`; safeCreateIcons(); return; }
+
+            customExerciseDB.forEach((exName, index) => {
+                const isFirst = index === 0; const isLast = index === customExerciseDB.length - 1;
+                listContainer.insertAdjacentHTML('beforeend', `
+                <div class="flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                    <span class="font-bold text-gray-700 text-base flex-1 truncate pr-2">${exName}</span>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <button onclick="moveExerciseUp(${index})" class="p-2 rounded-lg transition active:scale-90 ${isFirst ? 'text-gray-200' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}" ${isFirst ? 'disabled' : ''}><i data-lucide="arrow-up" class="w-5 h-5"></i></button>
+                        <button onclick="moveExerciseDown(${index})" class="p-2 rounded-lg transition active:scale-90 ${isLast ? 'text-gray-200' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}" ${isLast ? 'disabled' : ''}><i data-lucide="arrow-down" class="w-5 h-5"></i></button>
+                        <div class="w-px h-5 bg-gray-200 mx-1"></div>
+                        <button onclick="deleteSettingsExercise(${index})" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition active:scale-90"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                    </div>
+                </div>`);
+            });
+            safeCreateIcons();
+        }
+
+        function moveExerciseUp(index) { if (index <= 0) return; const temp = customExerciseDB[index - 1]; customExerciseDB[index - 1] = customExerciseDB[index]; customExerciseDB[index] = temp; saveToDB('coachExerciseDB', customExerciseDB); renderManageExerciseList(); }
+        function moveExerciseDown(index) { if (index >= customExerciseDB.length - 1) return; const temp = customExerciseDB[index + 1]; customExerciseDB[index + 1] = customExerciseDB[index]; customExerciseDB[index] = temp; saveToDB('coachExerciseDB', customExerciseDB); renderManageExerciseList(); }
+        function deleteSettingsExercise(index) { customExerciseDB.splice(index, 1); saveToDB('coachExerciseDB', customExerciseDB); renderManageExerciseList(); showToast("已刪除動作"); }
+
+
+        // ====== 學員列表 ======
+        function renderStudentSelector() {
+            const selector = document.getElementById('student-selector'); const currentValue = selector.value; selector.innerHTML = '';
+            studentsDB.forEach(s => { const option = document.createElement('option'); option.value = s.name; option.text = s.name; selector.appendChild(option); });
+            if(currentValue) selector.value = currentValue;
+        }
+
+        function renderStudentsPage() {
+            const container = document.getElementById('students-container'); container.innerHTML = '';
+            if(!Array.isArray(studentsDB)) return;
+
+            studentsDB.forEach((student, index) => {
+                let studentHistories = []; if(Array.isArray(historyDB)) studentHistories = historyDB.filter(h => h && h.student === student.name).sort((a,b) => new Date(b.date) - new Date(a.date));
+                let classesTag = "";
+                if(student.name !== "自己") { classesTag = student.classes <= 3 ? `<span class="inline-block mt-0.5 text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">剩餘 ${student.classes} 堂 (請提醒續約)</span>` : `<span class="inline-block mt-0.5 text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">剩餘 ${student.classes} 堂</span>`; }
+
+                let historyHTML = '';
+                if(studentHistories.length === 0) { historyHTML = `<p class="text-xs text-gray-400 p-2 text-center">尚無訓練紀錄</p>`; } 
+                else {
+                    historyHTML = studentHistories.map(record => {
+                        let summary = '無動作'; if(Array.isArray(record.exercises)) { summary = record.exercises.map(ex => ex.name).join(', ') || '無動作'; }
+                        return `<div onclick="loadWorkoutFromHistory('${student.name}', '${record.date}')" class="text-sm bg-white p-3 rounded-xl border border-gray-200 shadow-sm active:bg-blue-50 cursor-pointer transition mb-2 flex items-center justify-between group"><div class="flex-1 overflow-hidden"><div class="text-blue-600 text-xs font-bold mb-0.5">${record.date}</div><div class="font-medium text-gray-700 truncate">${summary}</div></div><i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 group-active:text-blue-500 shrink-0"></i></div>`;
+                    }).join('');
+                }
+
+                const editBtnHTML = student.name !== "自己" ? `<button onclick="openEditStudentModal(${index})" class="p-2 text-gray-400 hover:text-blue-600 transition ml-2"><i data-lucide="pencil" class="w-4 h-4"></i></button>` : ``;
+                const cardHTML = `<div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-4"><div class="p-4 flex items-center justify-between border-b border-gray-50 relative"><div class="flex items-center gap-3"><div class="w-12 h-12 ${student.color} rounded-full flex items-center justify-center font-bold text-lg">${student.name.charAt(0)}</div><div><div class="flex items-center"><h3 class="font-bold text-lg text-gray-800">${student.name}</h3>${editBtnHTML}</div>${classesTag}</div></div><div class="flex gap-2 shrink-0"><button onclick="viewHistory('history-${index}')" class="p-2.5 text-gray-400 bg-gray-50 hover:bg-gray-100 rounded-xl active:scale-95 transition"><i data-lucide="history" class="w-5 h-5"></i></button><button onclick="startTraining('${student.name}')" class="p-2.5 text-white bg-blue-600 rounded-xl active:scale-95 transition shadow-sm"><i data-lucide="play" class="w-5 h-5"></i></button></div></div><div id="history-${index}" class="hidden bg-gray-50 px-4 py-3 border-t border-gray-100"><p class="text-xs font-bold text-gray-500 mb-2 flex items-center gap-1"><i data-lucide="clock" class="w-3.5 h-3.5"></i> 點擊日期可還原課表</p><div class="max-h-[220px] overflow-y-auto custom-scrollbar pr-1 pb-1">${historyHTML}</div></div></div>`;
+                container.insertAdjacentHTML('beforeend', cardHTML);
+            });
+            safeCreateIcons();
+        }
+
+        function viewHistory(historyId) { const elem = document.getElementById(historyId); if(elem.classList.contains('hidden')) { elem.classList.remove('hidden'); elem.classList.add('animate-expand'); } else { elem.classList.add('hidden'); elem.classList.remove('animate-expand'); } }
+        function startTraining(studentName) { document.getElementById('student-selector').value = studentName; initDate(); switchPage('record'); showToast(`切換至 ${studentName} 的今日課表`); }
+        function loadWorkoutFromHistory(studentName, dateStr) { document.getElementById('student-selector').value = studentName; datePicker.value = dateStr; updateDateText(dateStr); switchPage('record'); showToast(`已還原 ${studentName} 於 ${dateStr} 的課表`); }
+
+        // ====== 學員編輯 ======
+        function openAddStudentModal() { document.getElementById('add-student-modal').classList.remove('hidden'); document.getElementById('add-student-modal').classList.add('flex'); }
+        function closeAddStudentModal() { document.getElementById('add-student-modal').classList.add('hidden'); document.getElementById('add-student-modal').classList.remove('flex'); document.getElementById('new-student-name').value = ''; document.getElementById('new-student-classes').value = ''; }
+        function saveNewStudent() {
+            try {
+                const name = document.getElementById('new-student-name').value.trim(); const classes = parseInt(document.getElementById('new-student-classes').value) || 0;
+                if(!name) { showToast("請輸入學員姓名"); return; }
+                const colors = ['bg-purple-100 text-purple-600', 'bg-orange-100 text-orange-600', 'bg-teal-100 text-teal-600', 'bg-indigo-100 text-indigo-600'];
+                studentsDB.push({ name: name, classes: classes, color: colors[Math.floor(Math.random() * colors.length)] }); saveToDB('coachStudentsDB', studentsDB);
+                renderStudentSelector(); renderStudentsPage(); closeAddStudentModal(); showToast(`已新增學員：${name}`);
+            } catch (e) {}
+        }
+        function openEditStudentModal(index) {
+            const student = studentsDB[index]; document.getElementById('edit-student-index').value = index; document.getElementById('edit-student-name').value = student.name; document.getElementById('edit-student-add-classes').value = '';
+            document.getElementById('edit-student-modal').classList.remove('hidden'); document.getElementById('edit-student-modal').classList.add('flex');
+        }
+        function closeEditStudentModal() { document.getElementById('edit-student-modal').classList.add('hidden'); document.getElementById('edit-student-modal').classList.remove('flex'); }
+        function saveEditStudent() {
+            try {
+                const index = document.getElementById('edit-student-index').value; const newName = document.getElementById('edit-student-name').value.trim(); const addClasses = parseInt(document.getElementById('edit-student-add-classes').value) || 0;
+                if(!newName) { showToast("姓名不可為空"); return; }
+                const oldName = studentsDB[index].name;
+                if(newName !== oldName) { if(Array.isArray(historyDB)){ historyDB.forEach(h => { if(h && h.student === oldName) h.student = newName; }); saveToDB('coachHistoryDB', historyDB); } }
+                studentsDB[index].name = newName; studentsDB[index].classes += addClasses; saveToDB('coachStudentsDB', studentsDB);
+                renderStudentSelector(); renderStudentsPage();
+                if(document.getElementById('student-selector').value === oldName) { document.getElementById('student-selector').value = newName; updateDeductUI(); }
+                closeEditStudentModal(); showToast(`已更新學員資料`);
+            } catch (e) {}
+        }
+
+        // ====== 🌟 時光機：抓取歷史紀錄 (PR 與上次成績) ======
+        function getPreviousExerciseData(studentName, exerciseName, targetDateStr) {
+            if (!Array.isArray(historyDB)) return null;
+            const targetDate = new Date(targetDateStr); targetDate.setHours(0,0,0,0);
+            let pastRecords = historyDB.filter(h => {
+                if (!h || h.student !== studentName || !h.date) return false;
+                const hDate = new Date(h.date); hDate.setHours(0,0,0,0); return hDate < targetDate; 
+            });
+            pastRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+            for (let record of pastRecords) {
+                if (Array.isArray(record.exercises)) {
+                    const ex = record.exercises.find(e => e && e.name === exerciseName);
+                    if (ex && Array.isArray(ex.sets)) return ex.sets; 
+                }
+            }
+            return null;
+        }
+
+        function getPR(studentName, exerciseName) {
+            try {
+                let maxWeight = 0, maxReps = 0, maxSecs = 0; let matchedSecsForMaxWeight = 0; 
+                if(!Array.isArray(historyDB)) return "尚無紀錄";
+                
+                historyDB.forEach(record => { 
+                    if(record && record.student === studentName && Array.isArray(record.exercises)) { 
+                        record.exercises.forEach(ex => { 
+                            if(ex && ex.name === exerciseName && Array.isArray(ex.sets)) { 
+                                ex.sets.forEach(s => { 
+                                    if(s){ 
+                                        const w = parseFloat(s.weight) || 0, r = parseInt(s.reps) || 0, sec = parseInt(s.secs) || 0; 
+                                        if(w > maxWeight || (w === maxWeight && r > maxReps)) { maxWeight = w; maxReps = r; matchedSecsForMaxWeight = sec; } 
+                                        if(sec > maxSecs) { maxSecs = sec; }
+                                    }
+                                }); 
+                            } 
+                        }); 
+                    } 
+                });
+                if(maxWeight > 0) { if(maxReps > 0) return `${maxWeight}kg × ${maxReps}`; if(matchedSecsForMaxWeight > 0) return `${maxWeight}kg × ${matchedSecsForMaxWeight}秒`; return `${maxWeight}kg`; }
+                if(maxReps > 0) return `${maxReps}下`; if(maxSecs > 0) return `${maxSecs}秒`; return "尚無紀錄";
+            } catch (e) { return "尚無紀錄"; }
+        }
+        
+        function removeSet(btnElement) {
+            const row = btnElement.closest('.set-row'); const container = row.parentElement;
+            if(container.querySelectorAll('.set-row').length <= 1) { showToast("至少需保留一組"); return; }
+            const card = container.closest('.exercise-card'); let prevSets = []; try { prevSets = JSON.parse(card.getAttribute('data-prev-sets') || "[]"); } catch(e){}
+            row.remove(); 
+            container.querySelectorAll('.set-row').forEach((r, index) => { 
+                r.querySelector('.set-num').textContent = index + 1; 
+                const prevSet = prevSets[index] || null; let prevD1 = "-", prevD2 = "-";
+                if (prevSet) { const pw = parseFloat(prevSet.weight) || 0, pr = parseInt(prevSet.reps) || 0, ps = parseInt(prevSet.secs) || 0; if (pw > 0) { prevD1 = `${pw}kg`; prevD2 = pr > 0 ? `${pr}下` : (ps > 0 ? `${ps}秒` : "-"); } else if (pr > 0) { prevD1 = "-"; prevD2 = `${pr}下`; } else if (ps > 0) { prevD1 = "-"; prevD2 = `${ps}秒`; } }
+                const spans = r.querySelectorAll('.w-10.shrink-0 span'); if (spans.length >= 2) { spans[0].textContent = prevD1; spans[1].textContent = prevD2; }
+            });
+        }
+        function addSet(containerId) {
+            const container = document.getElementById(containerId); const rows = container.querySelectorAll('.set-row');
+            if(rows.length === 0) return; const newNum = rows.length + 1;
+            const card = container.closest('.exercise-card'); let prevSets = []; try { prevSets = JSON.parse(card.getAttribute('data-prev-sets') || "[]"); } catch(e){}
+            const prevSet = prevSets[newNum - 1] || null; 
+            const newRow = rows[rows.length - 1].cloneNode(true); newRow.querySelector('.set-num').textContent = newNum; 
+            let prevD1 = "-", prevD2 = "-";
+            if (prevSet) { const pw = parseFloat(prevSet.weight) || 0, pr = parseInt(prevSet.reps) || 0, ps = parseInt(prevSet.secs) || 0; if (pw > 0) { prevD1 = `${pw}kg`; prevD2 = pr > 0 ? `${pr}下` : (ps > 0 ? `${ps}秒` : "-"); } else if (pr > 0) { prevD1 = "-"; prevD2 = `${pr}下`; } else if (ps > 0) { prevD1 = "-"; prevD2 = `${ps}秒`; } }
+            const spans = newRow.querySelectorAll('.w-10.shrink-0 span'); if (spans.length >= 2) { spans[0].textContent = prevD1; spans[1].textContent = prevD2; }
+            container.appendChild(newRow);
+        }
+        
+        let currentTargetCard = null;
+        function openActionOptions(btnElement) { currentTargetCard = btnElement.closest('.exercise-card'); document.getElementById('action-sheet').classList.remove('hidden'); document.getElementById('action-sheet').classList.add('flex'); }
+        function closeActionSheet() { document.getElementById('action-sheet').classList.add('hidden'); document.getElementById('action-sheet').classList.remove('flex'); currentTargetCard = null; }
+        function deleteCurrentExercise() {
+            if(currentTargetCard) {
+                currentTargetCard.remove();
+                if(document.getElementById('workout-container').querySelectorAll('.exercise-card').length === 0) {
+                    document.getElementById('workout-container').innerHTML = `<div id="empty-state" class="flex flex-col items-center justify-center py-16 px-4 text-center"><div class="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4"><i data-lucide="dumbbell" class="w-10 h-10 text-gray-400 opacity-50"></i></div><h3 class="text-lg font-bold text-gray-700 mb-1">新的訓練紀錄</h3><p class="text-sm text-gray-500">點擊下方按鈕，開始加入動作</p></div>`; safeCreateIcons();
+                }
+                closeActionSheet(); showToast("動作已刪除");
+            }
+        }
+        function addNoteToCurrentExercise() {
+            if(currentTargetCard) {
+                const noteContainer = currentTargetCard.querySelector('.note-container');
+                noteContainer.classList.remove('hidden'); noteContainer.classList.add('animate-expand');
+                setTimeout(() => { noteContainer.querySelector('textarea').focus(); }, 100);
+                closeActionSheet();
+            }
+        }
+
+        // ====== 動作庫 (選單) ======
+        function renderExerciseDB() {
+            const listContainer = document.getElementById('db-exercise-list'); listContainer.innerHTML = ''; 
+            if(customExerciseDB.length === 0) { listContainer.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-gray-400"><i data-lucide="folder-open" class="w-10 h-10 mb-2 opacity-50"></i><p class="text-sm font-medium">動作庫目前為空</p></div>`; } 
+            else { 
+                customExerciseDB.forEach(exName => { 
+                    const safeName = exName.replace(/'/g, "\\'"); 
+                    listContainer.insertAdjacentHTML('beforeend', `<button onclick="addNewExercise('${safeName}')" class="w-full text-left px-5 py-4 bg-white border border-gray-200 hover:border-blue-400 rounded-2xl transition flex items-center justify-between group active:bg-gray-50 mb-2"><div class="flex items-center gap-3"><div class="w-2 h-2 rounded-full bg-blue-500"></div><span class="font-bold text-gray-700 text-base">${exName}</span></div><i data-lucide="plus" class="w-5 h-5 text-gray-300 group-hover:text-blue-500"></i></button>`); 
+                }); 
+            }
+            safeCreateIcons();
+        }
+
+        function openExerciseModal() { renderExerciseDB(); document.getElementById('exercise-modal').classList.remove('hidden'); document.getElementById('exercise-modal').classList.add('flex'); }
+        function closeExerciseModal() { document.getElementById('exercise-modal').classList.add('hidden'); document.getElementById('exercise-modal').classList.remove('flex'); document.getElementById('custom-exercise-input').value = ''; }
+
+        function addNewExercise(exerciseName) { 
+            try { createExerciseCard(exerciseName); closeExerciseModal(); showToast(`已載入：${exerciseName}`); } 
+            catch(err) { showToast(`新增失敗: ${err.message}`); }
+        }
+        
+        function addCustomExercise() {
+            try {
+                const inputVal = document.getElementById('custom-exercise-input').value.trim();
+                if(inputVal === "") { showToast("請先輸入動作名稱"); return; }
+                if(!customExerciseDB.includes(inputVal)) { customExerciseDB.unshift(inputVal); saveToDB('coachExerciseDB', customExerciseDB); }
+                createExerciseCard(inputVal); closeExerciseModal(); showToast(`已新增：${inputVal}`);
+            } catch(err) {}
+        }
+
+        let exerciseCounter = 0; 
+        function createExerciseCard(exerciseName, existingData = null) {
+            try {
+                const emptyState = document.getElementById('empty-state'); if(emptyState && emptyState.parentNode) emptyState.parentNode.removeChild(emptyState); 
+                exerciseCounter++; const containerId = `sets-container-new-${exerciseCounter}`;
+                const colors = ['bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-orange-500', 'bg-teal-500']; const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                
+                const currentStudent = document.getElementById('student-selector').value; const currentDate = document.getElementById('date-picker').value;
+                const prText = getPR(currentStudent, exerciseName); const prOpacity = prText === "尚無紀錄" ? "opacity-60" : "";
+
+                const prevSets = getPreviousExerciseData(currentStudent, exerciseName, currentDate) || [];
+                const prevSetsAttr = JSON.stringify(prevSets).replace(/'/g, "&#39;");
+
+                let setsHTML = '';
+                if(existingData && Array.isArray(existingData.sets) && existingData.sets.length > 0) { 
+                    existingData.sets.forEach((s, index) => { if(s) setsHTML += generateSetRowHTML(index + 1, s.weight, s.reps, s.secs, prevSets[index]); }); 
+                } else { setsHTML = generateSetRowHTML(1, '', '', '', prevSets[0]); }
+                
+                let noteValue = ''; let noteClass = 'hidden';
+                if(existingData && existingData.note) { noteValue = existingData.note; noteClass = 'block'; }
+
+                const newCardHTML = `
+                    <div class="mx-3 sm:mx-4 bg-white rounded-2xl shadow-sm border border-gray-200 mb-5 overflow-hidden exercise-card animate-card" data-exercise="${exerciseName}" data-prev-sets='${prevSetsAttr}'>
+                        <div class="px-4 py-3 bg-gray-50/50 border-b border-gray-100 flex justify-between items-start">
+                            <div class="flex flex-col"><div class="flex items-center gap-2"><div class="w-1.5 h-5 ${randomColor} rounded-full"></div><h3 class="font-bold text-lg text-gray-800">${exerciseName}</h3></div><div class="flex items-center mt-1 ml-3.5"><span class="text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-sm ${prOpacity}"><i data-lucide="trophy" class="w-3 h-3"></i> PR: ${prText}</span></div></div>
+                            <button onclick="openActionOptions(this)" class="text-gray-400 hover:text-gray-600 active:bg-gray-200 p-1.5 rounded-lg transition"><i data-lucide="more-horizontal"></i></button>
+                        </div>
+                        <div class="p-3 sm:p-4" id="${containerId}">
+                            <div class="flex items-center gap-1 sm:gap-2 mb-2 text-center text-xs text-gray-400 font-medium px-1"><div class="w-6 shrink-0 text-[10px]">組數</div><div class="w-10 shrink-0 text-[10px]">上次</div><div class="flex-1 text-[11px]">重量(kg)</div><div class="flex-1 text-[11px]">次數</div><div class="flex-1 text-[11px]">秒(s)</div><div class="w-6 shrink-0"></div></div>
+                            ${setsHTML}
+                        </div>
+                        <div class="px-4 pb-2 ${noteClass} note-container"><textarea placeholder="新增備註..." class="note-input w-full bg-yellow-50/50 border border-yellow-200 rounded-xl p-3 text-sm text-gray-700 resize-none transition-colors" rows="2">${noteValue}</textarea></div>
+                        <div class="px-4 pb-4"><button onclick="addSet('${containerId}')" class="w-full py-3 bg-gray-50 text-gray-500 font-medium rounded-xl text-sm flex items-center justify-center gap-1 hover:bg-gray-100 border border-dashed border-gray-300 transition active:bg-gray-200"><i data-lucide="plus" class="w-4 h-4"></i> 新增一組</button></div>
+                    </div>`;
+                document.getElementById('workout-container').insertAdjacentHTML('beforeend', newCardHTML); 
+                safeCreateIcons(); 
+            } catch(e) { }
+        }
+
+        function generateSetRowHTML(num, w, r, s, prevSet = null) {
+            const valW = w === 0 || w === "0" ? "" : w; const valR = r === 0 || r === "0" ? "" : r; const valS = s === 0 || s === "0" ? "" : s;
+            let prevD1 = "-"; let prevD2 = "-";
+            if (prevSet) {
+                const pw = parseFloat(prevSet.weight) || 0, pr = parseInt(prevSet.reps) || 0, ps = parseInt(prevSet.secs) || 0;
+                if (pw > 0) { prevD1 = `${pw}kg`; prevD2 = pr > 0 ? `${pr}下` : (ps > 0 ? `${ps}秒` : "-"); } 
+                else if (pr > 0) { prevD1 = "-"; prevD2 = `${pr}下`; } 
+                else if (ps > 0) { prevD1 = "-"; prevD2 = `${ps}秒`; }
+            }
+            return `<div class="flex items-center gap-1 sm:gap-2 mb-2 set-row"><div class="w-6 h-11 shrink-0 flex justify-center items-center bg-gray-100 rounded-lg text-sm font-bold text-gray-500 set-num">${num}</div><div class="w-10 shrink-0 flex flex-col justify-center items-center text-[9px] text-gray-400 font-medium leading-tight truncate"><span>${prevD1}</span><span>${prevD2}</span></div><div class="flex-1 h-11"><input type="number" value="${valW}" placeholder="0" class="weight-input w-full h-full bg-blue-50/80 rounded-xl text-center font-bold text-gray-700 text-lg outline-none placeholder-gray-300"></div><div class="flex-1 h-11"><input type="number" value="${valR}" placeholder="0" class="reps-input w-full h-full bg-blue-50/80 rounded-xl text-center font-bold text-gray-700 text-lg outline-none placeholder-gray-300"></div><div class="flex-1 h-11"><input type="number" value="${valS}" placeholder="-" class="secs-input w-full h-full bg-orange-50/60 rounded-xl text-center font-bold text-gray-700 text-lg outline-none placeholder-gray-300"></div><button onclick="removeSet(this)" class="w-6 h-11 shrink-0 flex justify-center items-center text-gray-300 hover:text-red-500 active:scale-90 transition"><i data-lucide="minus-circle" class="w-5 h-5"></i></button></div>`;
+        }
+
+        // ====== 儲存與扣堂 ======
+        function saveWorkout() {
+            try {
+                const student = document.getElementById('student-selector').value; const dateStr = document.getElementById('date-picker').value; 
+                const cards = document.querySelectorAll('.exercise-card');
+                
+                historyDB = historyDB.filter(h => !(h && h.student === student && h.date === dateStr));
+
+                if(cards.length === 0) { 
+                    saveToDB('coachHistoryDB', historyDB); showToast(`已清空「${student}」當天的訓練！`); return; 
+                }
+
+                let workoutData = { id: Date.now(), student: student, date: dateStr, exercises: [] };
+                cards.forEach(card => {
+                    const exName = card.getAttribute('data-exercise'); const noteElem = card.querySelector('.note-input'); const note = (noteElem && noteElem.value.trim() !== '') ? noteElem.value.trim() : '';
+                    let sets = [];
+                    card.querySelectorAll('.set-row').forEach(row => { sets.push({ weight: row.querySelector('.weight-input').value, reps: row.querySelector('.reps-input').value, secs: row.querySelector('.secs-input').value }); });
+                    workoutData.exercises.push({ name: exName, note: note, sets: sets });
+                });
+
+                historyDB.push(workoutData); saveToDB('coachHistoryDB', historyDB);
+                
+                const deductContainer = document.getElementById('deduct-class-container');
+                if(!deductContainer.classList.contains('hidden') && document.getElementById('deduct-checkbox').checked) {
+                    const studentIdx = studentsDB.findIndex(s => s.name === student);
+                    if(studentIdx > -1 && studentsDB[studentIdx].classes > 0) {
+                        studentsDB[studentIdx].classes -= 1; saveToDB('coachStudentsDB', studentsDB); updateDeductUI(); showToast(`✅ 訓練已儲存，並成功扣除 1 堂課！`); return;
+                    }
+                }
+                showToast(`✅ 訓練已成功儲存！`);
+            } catch(e) { }
+        }
+
+        function copyToAI() {
+            let logText = `訓練紀錄 [${document.getElementById('current-date-text').innerText}]\n------------------\n`;
+            document.querySelectorAll('.exercise-card').forEach(card => {
+                logText += `【${card.getAttribute('data-exercise')}】\n`;
+                const noteElem = card.querySelector('.note-input'); if(noteElem && noteElem.value.trim() !== '') logText += `備註：${noteElem.value.trim()}\n`;
+                card.querySelectorAll('.set-row').forEach(row => {
+                    const setNum = row.querySelector('.set-num').textContent; const w = row.querySelector('.weight-input').value, r = row.querySelector('.reps-input').value, s = row.querySelector('.secs-input').value;
+                    let arr = []; if(w) arr.push(`${w}kg`); if(r) arr.push(`${r}下`); if(s) arr.push(`${s}秒`);
+                    logText += `第${setNum}組: ` + (arr.length ? arr.join(' x ') : "(無數據)") + `\n`;
+                });
+                logText += `\n`;
+            });
+            const textArea = document.createElement("textarea"); textArea.value = logText; document.body.appendChild(textArea); textArea.select();
+            try { document.execCommand('copy'); showToast("訓練紀錄已複製成功"); } catch(e) { showToast("複製失敗"); }
+            document.body.removeChild(textArea);
+        }
+    </script>
+</body>
+</html>
