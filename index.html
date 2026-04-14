@@ -334,7 +334,6 @@
         // ====== 1. 安全存取、鎖定滾動與同步機制 ======
         function safeCreateIcons() { try { if(typeof lucide !== 'undefined') lucide.createIcons(); } catch(e) { } }
         
-        // 鎖定背後畫面，防止 iOS Safari 鍵盤跑版
         function lockScroll() { document.body.style.overflow = 'hidden'; }
         function unlockScroll() { document.body.style.overflow = ''; }
 
@@ -349,7 +348,28 @@
         }
 
         function loadFromDB(key, defaultData) {
-            try { const val = localStorage.getItem(key); if (val) { const parsed = JSON.parse(val); if (Array.isArray(defaultData) && !Array.isArray(parsed)) return defaultData; return parsed; } } catch(e) {}
+            try { 
+                const val = localStorage.getItem(key); 
+                if (val) { 
+                    let parsed = JSON.parse(val); 
+                    if (Array.isArray(defaultData) && !Array.isArray(parsed)) return defaultData; 
+                    
+                    // 🌟 自動修復 Google Sheet 帶來的時區格式問題
+                    if (key === 'coachHistoryDB' && Array.isArray(parsed)) {
+                        let isFixed = false;
+                        parsed = parsed.map(h => {
+                            if (h && h.date && h.date.includes('T')) {
+                                const d = new Date(h.date);
+                                h.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                isFixed = true;
+                            }
+                            return h;
+                        });
+                        if (isFixed) localStorage.setItem(key, JSON.stringify(parsed));
+                    }
+                    return parsed; 
+                } 
+            } catch(e) {}
             return defaultData;
         }
 
@@ -402,7 +422,14 @@
                         localStorage.setItem('coachStudentsDB', JSON.stringify(studentsDB));
                     }
                     if (result.data.history) {
-                        historyDB = result.data.history.filter(h => h !== null);
+                        historyDB = result.data.history.filter(h => h !== null).map(h => {
+                            // 自動修復雲端來的時區格式
+                            if (h.date && h.date.includes('T')) {
+                                const d = new Date(h.date);
+                                h.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                            }
+                            return h;
+                        });
                         localStorage.setItem('coachHistoryDB', JSON.stringify(historyDB));
                     }
                     if (result.data.exercises) {
@@ -613,7 +640,13 @@
                             name: s.Name || s.name || "未命名",
                             color: s.Color || s.color || "bg-gray-100 text-gray-600"
                         }));
-                        historyDB = importedData.historyDB.filter(h => h !== null); 
+                        historyDB = importedData.historyDB.filter(h => h !== null).map(h => {
+                            if (h.date && h.date.includes('T')) {
+                                const d = new Date(h.date);
+                                h.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                            }
+                            return h;
+                        }); 
                         customExerciseDB = importedData.customExerciseDB || [];
                         
                         saveToDB('coachStudentsDB', studentsDB); 
