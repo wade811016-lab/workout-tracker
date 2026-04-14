@@ -302,9 +302,15 @@
                     <input type="number" id="edit-student-add-classes" placeholder="輸入新增堂數，例如：10" class="w-full bg-gray-100 text-gray-700 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
             </div>
-            <button onclick="saveEditStudent()" class="w-full py-4 bg-blue-600 text-white font-bold rounded-xl text-base flex items-center justify-center gap-2 active:scale-95 transition">
-                儲存變更
-            </button>
+            
+            <div class="flex gap-3">
+                <button onclick="deleteStudent()" class="w-1/4 py-4 bg-red-50 text-red-500 font-bold rounded-xl text-base flex items-center justify-center active:scale-95 transition border border-red-100">
+                    <i data-lucide="trash-2" class="w-5 h-5"></i>
+                </button>
+                <button onclick="saveEditStudent()" class="w-3/4 py-4 bg-blue-600 text-white font-bold rounded-xl text-base flex items-center justify-center gap-2 active:scale-95 transition">
+                    儲存變更
+                </button>
+            </div>
         </div>
     </div>
 
@@ -346,7 +352,6 @@
         // ====== 1. 安全存取與同步機制 ======
         function safeCreateIcons() { try { if(typeof lucide !== 'undefined') lucide.createIcons(); } catch(e) { } }
         
-        // 儲存到 LocalStorage 後，如果設定了雲端網址，就觸發雲端同步
         function saveToDB(key, data) { 
             try { 
                 localStorage.setItem(key, JSON.stringify(data)); 
@@ -387,7 +392,6 @@
                 }
             })
             .catch(error => {
-                console.error('雲端同步失敗:', error);
                 document.getElementById('cloud-status-badge').innerText = '同步失敗，將於下次重試';
                 document.getElementById('cloud-status-badge').className = 'bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded-full';
             })
@@ -430,6 +434,7 @@
             .catch(error => { showToast("❌ 同步失敗，請檢查網址或網路"); })
             .finally(() => { hideSyncingUI(); });
         }
+
 
         // ====== 全局資料庫載入 ======
         let customExerciseDB = loadFromDB('coachExerciseDB', []);
@@ -604,11 +609,7 @@
                 const dataStr = JSON.stringify(backupData, null, 2); const blob = new Blob([dataStr], { type: "application/json" }); const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; 
                 
-                // 命名規則優化： 訓練紀錄_YYYYMMDD.json
-                const today = new Date();
-                const yyyy = today.getFullYear();
-                const mm = String(today.getMonth() + 1).padStart(2, '0');
-                const dd = String(today.getDate()).padStart(2, '0');
+                const today = new Date(); const yyyy = today.getFullYear(); const mm = String(today.getMonth() + 1).padStart(2, '0'); const dd = String(today.getDate()).padStart(2, '0');
                 const todayStr = `${yyyy}${mm}${dd}`;
                 
                 a.download = `訓練紀錄_${todayStr}.json`;
@@ -626,7 +627,6 @@
                         studentsDB = importedData.studentsDB; historyDB = importedData.historyDB; customExerciseDB = importedData.customExerciseDB || [];
                         saveToDB('coachStudentsDB', studentsDB); saveToDB('coachHistoryDB', historyDB); saveToDB('coachExerciseDB', customExerciseDB);
                         renderStudentSelector(); loadRecordPageData(); showToast("✅ 資料已成功還原！");
-                        // 還原後強制同步到雲端
                         if (SCRIPT_URL && !SCRIPT_URL.includes('請貼上你的')) triggerCloudSync();
                     } else { showToast("❌ 檔案格式錯誤"); }
                 } catch(err) { showToast("❌ 解析檔案失敗"); }
@@ -708,7 +708,7 @@
         function startTraining(studentName) { document.getElementById('student-selector').value = studentName; initDate(); switchPage('record'); showToast(`切換至 ${studentName} 的今日課表`); }
         function loadWorkoutFromHistory(studentName, dateStr) { document.getElementById('student-selector').value = studentName; datePicker.value = dateStr; updateDateText(dateStr); switchPage('record'); showToast(`已還原 ${studentName} 於 ${dateStr} 的課表`); }
 
-        // ====== 學員編輯 ======
+        // ====== 學員編輯 (加入刪除按鈕) ======
         function openAddStudentModal() { document.getElementById('add-student-modal').classList.remove('hidden'); document.getElementById('add-student-modal').classList.add('flex'); }
         function closeAddStudentModal() { document.getElementById('add-student-modal').classList.add('hidden'); document.getElementById('add-student-modal').classList.remove('flex'); document.getElementById('new-student-name').value = ''; document.getElementById('new-student-classes').value = ''; }
         function saveNewStudent() {
@@ -736,6 +736,37 @@
                 if(document.getElementById('student-selector').value === oldName) { document.getElementById('student-selector').value = newName; updateDeductUI(); }
                 closeEditStudentModal(); showToast(`已更新學員資料`);
             } catch (e) {}
+        }
+
+        // 刪除學員與歷史紀錄
+        function deleteStudent() {
+            try {
+                const index = document.getElementById('edit-student-index').value;
+                const studentName = studentsDB[index].name;
+
+                if(confirm(`確定要刪除學員「${studentName}」嗎？\n⚠️ 此操作會將他的「所有訓練紀錄」一併刪除，且無法復原！`)) {
+                    
+                    studentsDB.splice(index, 1);
+                    saveToDB('coachStudentsDB', studentsDB);
+
+                    if(Array.isArray(historyDB)) {
+                        historyDB = historyDB.filter(h => h && h.student !== studentName);
+                        saveToDB('coachHistoryDB', historyDB);
+                    }
+
+                    renderStudentSelector();
+                    renderStudentsPage();
+
+                    if(document.getElementById('student-selector').value === studentName || !document.getElementById('student-selector').value) {
+                        document.getElementById('student-selector').value = '自己';
+                        loadRecordPageData();
+                        updateDeductUI();
+                    }
+
+                    closeEditStudentModal();
+                    showToast(`✅ 已徹底刪除學員 ${studentName}`);
+                }
+            } catch(e) { showToast(`刪除失敗: ${e.message}`); }
         }
 
         // ====== 🌟 時光機：抓取歷史紀錄 (PR 與上次成績) ======
