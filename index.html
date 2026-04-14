@@ -222,7 +222,7 @@
     </nav>
 
     <div id="exercise-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden transition-opacity">
-        <div class="absolute bottom-0 left-0 right-0 mx-auto bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col max-h-[85vh]">
+        <div class="absolute bottom-0 left-0 right-0 mx-auto bg-white w-full max-w-lg rounded-t-3xl p-5 pb-safe animate-slide-up flex flex-col h-[85vh]">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-xl font-bold text-gray-800">專屬動作庫</h3>
                 <button onclick="closeExerciseModal()" class="p-2 text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full active:scale-95 transition"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -354,7 +354,6 @@
                     let parsed = JSON.parse(val); 
                     if (Array.isArray(defaultData) && !Array.isArray(parsed)) return defaultData; 
                     
-                    // 🌟 自動修復 Google Sheet 帶來的時區格式問題
                     if (key === 'coachHistoryDB' && Array.isArray(parsed)) {
                         let isFixed = false;
                         parsed = parsed.map(h => {
@@ -423,7 +422,6 @@
                     }
                     if (result.data.history) {
                         historyDB = result.data.history.filter(h => h !== null).map(h => {
-                            // 自動修復雲端來的時區格式
                             if (h.date && h.date.includes('T')) {
                                 const d = new Date(h.date);
                                 h.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -565,7 +563,6 @@
                     studentHistories = studentHistories.filter(h => h && new Date(h.date) >= limitDate);
                 }
 
-                // 智慧判斷圖表畫法
                 let hasWeight = false, hasReps = false, hasSecs = false;
                 studentHistories.forEach(record => {
                     if(Array.isArray(record.exercises)){
@@ -670,7 +667,6 @@
             setTimeout(() => { window.location.reload(); }, 1500);
         }
 
-        // 動作庫管理全螢幕視窗
         function openManageExerciseModal() { lockScroll(); renderManageExerciseList(); document.getElementById('manage-exercise-modal').classList.remove('hidden'); document.getElementById('manage-exercise-modal').classList.add('flex'); }
         function closeManageExerciseModal() { unlockScroll(); document.getElementById('manage-exercise-modal').classList.add('hidden'); document.getElementById('manage-exercise-modal').classList.remove('flex'); }
         
@@ -733,7 +729,7 @@
         function startTraining(studentName) { document.getElementById('student-selector').value = studentName; initDate(); switchPage('record'); showToast(`切換至 ${studentName} 的今日課表`); }
         function loadWorkoutFromHistory(studentName, dateStr) { document.getElementById('student-selector').value = studentName; datePicker.value = dateStr; updateDateText(dateStr); switchPage('record'); showToast(`已還原 ${studentName} 於 ${dateStr} 的課表`); }
 
-        // ====== 學員編輯 (加入刪除按鈕) ======
+        // ====== 學員編輯 ======
         function openAddStudentModal() { lockScroll(); document.getElementById('add-student-modal').classList.remove('hidden'); document.getElementById('add-student-modal').classList.add('block'); }
         function closeAddStudentModal() { unlockScroll(); document.getElementById('add-student-modal').classList.add('hidden'); document.getElementById('add-student-modal').classList.remove('block'); document.getElementById('new-student-name').value = ''; }
         function saveNewStudent() {
